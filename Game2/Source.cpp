@@ -30,6 +30,7 @@ struct Config {
 
 UINT WM_UPDATE_MESSAGE = RegisterWindowMessage(0);
 int** array;
+int countStep = 0;
 std::string scfg = "P:\\Влад\\ВУЗ\\2 курс\\ОС\\Game2\\config.cfg";
 //----------------------------------------------------------------------------------------
 void rgbChanger2(rgb& color, double delta)
@@ -138,12 +139,6 @@ void loadConfig(Config& cfg)
 	}
 
 }
-//----------------------------------------------------------------------------------------
-RECT		rect;
-LPRECT		lprect	= new tagRECT;
-HPEN		hPen;
-PAINTSTRUCT ps;
-HDC			hdc;
 
 BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 {
@@ -152,14 +147,74 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 	{
 		if (wcscmp(szTextWin, TEXT("HelloWindow")) == 0)
 		{
-			std::cout << "hwnd: " << hwnd << "\n" << "name: ";
+			/*std::cout << "hwnd: " << hwnd << "\n" << "name: ";
 			_tprintf(szTextWin);
-			std::cout << "\n";
+			std::cout << "\n";*/
 			SendMessage(hwnd, WM_UPDATE_MESSAGE, NULL, NULL);
 		}
 	}
 	return TRUE;
 }
+
+bool checkDiagonal(int** array, int symb)
+{
+	bool toright = true;
+	bool toleft = true;
+	for (int i = 0; i < cfg.n; i++) {
+		toright &= (array[i][i] == symb);
+		toleft &= (array[cfg.n - i - 1][i] == symb);
+	}
+	if (toright || toleft) return true;
+
+	return false;
+}
+bool checkLane(int** array, int symb)
+{
+	bool cols = true;
+	bool rows = true;
+	for (int col = 0; col < cfg.n; col++) {
+		cols = true;
+		rows = true;
+		for (int row = 0; row < cfg.n; row++) {
+			cols &= (array[col][row] == symb);
+			rows &= (array[row][col] == symb);
+		}
+
+		// Это условие после каждой проверки колонки и столбца
+		// позволяет остановить дальнейшее выполнение, без проверки 
+		// всех остальных столбцов и строк.
+		if (cols || rows) return true;
+	}
+	return false;
+
+}
+void checkEnd(int** array)
+{
+	if(checkDiagonal(array, 1) || checkLane(array, 1))
+	{
+		for (int i = 0; i < cfg.n; i++)
+			for (int j = 0; j < cfg.n; j++)
+				array[i][j] = 0;
+		countStep = 0;
+		EnumWindows(&EnumWindowsProc, 0);
+		std::cout << "Game Over, Выиграл нолик\n";
+	}
+	if (checkDiagonal(array, 2) || checkLane(array, 2))
+	{
+		for (int i = 0; i < cfg.n; i++)
+			for (int j = 0; j < cfg.n; j++)
+				array[i][j] = 0;
+		countStep = 0;
+		EnumWindows(&EnumWindowsProc, 0);
+		std::cout << "Game Over, Выиграл крестик\n";
+	}
+}
+//----------------------------------------------------------------------------------------
+RECT		rect;
+LPRECT		lprect	= new tagRECT;
+HPEN		hPen;
+PAINTSTRUCT ps;
+HDC			hdc;
 
 LRESULT CALLBACK WndProc(
 	HWND	hWnd,
@@ -185,7 +240,8 @@ LRESULT CALLBACK WndProc(
 		switch (message)
 		{
 
-		case WM_RBUTTONUP:
+		/*case WM_RBUTTONUP:
+		{
 			x = GET_X_LPARAM(lParam); y = GET_Y_LPARAM(lParam);
 			for (int i = 0; i < cfg.n; i++)
 			{
@@ -210,7 +266,7 @@ LRESULT CALLBACK WndProc(
 			EnumWindows(&EnumWindowsProc, 0);
 			InvalidateRect(hWnd, lprect, 1);
 			return 0;
-
+		}*/
 		case WM_LBUTTONUP:
 		{
 			x = GET_X_LPARAM(lParam); y = GET_Y_LPARAM(lParam);
@@ -227,7 +283,11 @@ LRESULT CALLBACK WndProc(
 					{
 						if (array[i][j] != 1 && array[i][j] != 2)
 						{
-							array[i][j] = 1;
+							if (countStep % 2 == 0)
+								array[i][j] = 2;
+							else
+								array[i][j] = 1;
+							countStep++;
 						}
 						break;
 					}
@@ -235,6 +295,7 @@ LRESULT CALLBACK WndProc(
 			}
 			EnumWindows(&EnumWindowsProc, 0);
 			InvalidateRect(hWnd, lprect, 1);
+			checkEnd(array);
 			return 0;
 		}
 		case WM_PAINT:
@@ -385,9 +446,9 @@ int main(int argc, char* argv[])
 {
 	SetConsoleCP(1251);
 	SetConsoleOutputCP(1251);
-	setlocale(LOCALE_ALL, "ru");
+	setlocale(LC_ALL, "ru");
 	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-	FreeConsole();
+	//FreeConsole();
 
 	srand(time(NULL));
 	loadConfig(cfg);
