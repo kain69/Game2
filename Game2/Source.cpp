@@ -150,7 +150,7 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 			/*std::cout << "hwnd: " << hwnd << "\n" << "name: ";
 			_tprintf(szTextWin);
 			std::cout << "\n";*/
-			SendMessage(hwnd, WM_UPDATE_MESSAGE, NULL, NULL);
+			SendMessage(hwnd, WM_UPDATE_MESSAGE, countStep, NULL);
 		}
 	}
 	return TRUE;
@@ -233,6 +233,7 @@ LRESULT CALLBACK WndProc(
 	HBRUSH col = NULL;
 
 	if (message == WM_UPDATE_MESSAGE) {
+		countStep = wParam;
 		InvalidateRect(hWnd, lprect, 1);
 	}
 	else
