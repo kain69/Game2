@@ -150,7 +150,6 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 	TCHAR szTextWin[255];
 	if (GetWindowText(hwnd, (LPWSTR)szTextWin, sizeof(szTextWin)))
 	{
-		//|| wcscmp(szTextWin, TEXT("P:\\Âëàä\\ÂÓÇ\\2 êóðñ\\ÎÑ\\Game2\\Debug\\Game2.exe")) == 0
 		if (wcscmp(szTextWin, TEXT("HelloWindow")) == 0)
 		{
 			std::cout << "hwnd: " << hwnd << "\n" << "name: ";
@@ -199,12 +198,10 @@ LRESULT CALLBACK WndProc(
 
 					if ((xl <= x && yt <= y) && (xr > x && yb > y))
 					{
-						if (array[i][j] == 2)
+						if (array[i][j] != 1 && array[i][j] != 2)
 						{
-							array[i][j] = 0;
-						}
-						else
 							array[i][j] = 2;
+						}
 						break;
 					}
 				}
@@ -228,12 +225,10 @@ LRESULT CALLBACK WndProc(
 
 					if ((xl <= x && yt <= y) && (xr > x && yb > y))
 					{
-						if (array[i][j] == 1)
+						if (array[i][j] != 1 && array[i][j] != 2)
 						{
-							array[i][j] = 0;
-						}
-						else
 							array[i][j] = 1;
+						}
 						break;
 					}
 				}
@@ -393,12 +388,6 @@ int main(int argc, char* argv[])
 	setlocale(LOCALE_ALL, "ru");
 	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_GREEN | FOREGROUND_INTENSITY);
 	FreeConsole();
-
-	/*if (EnumWindows(&EnumWindowsProc, 0))
-	{
-		std::cout << "EnumWindows - ok" << std::endl;
-	}
-	else { std::cout << "Error EnumWindows..." << std::endl; }*/
 
 	srand(time(NULL));
 	loadConfig(cfg);
