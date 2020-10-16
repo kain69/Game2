@@ -208,6 +208,15 @@ void checkEnd(int** array)
 		EnumWindows(&EnumWindowsProc, 0);
 		std::cout << "Game Over, Выиграл крестик\n";
 	}
+	if (countStep >= 9)
+	{
+		for (int i = 0; i < cfg.n; i++)
+			for (int j = 0; j < cfg.n; j++)
+				array[i][j] = 0;
+		countStep = 0;
+		EnumWindows(&EnumWindowsProc, 0);
+		std::cout << "Game Over, Ничья\n";
+	}
 }
 //----------------------------------------------------------------------------------------
 RECT		rect;
