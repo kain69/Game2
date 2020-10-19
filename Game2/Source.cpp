@@ -29,8 +29,10 @@ struct Config {
 }cfg;
 
 UINT WM_UPDATE_MESSAGE = RegisterWindowMessage(0);
+UINT WM_GET_COUNT = RegisterWindowMessage(L"Please");
 int** array;
 int countStep = 0;
+HWND hWnd;
 std::string scfg = "P:\\Влад\\ВУЗ\\2 курс\\ОС\\Game2\\config.cfg";
 //----------------------------------------------------------------------------------------
 void rgbChanger2(rgb& color, double delta)
@@ -145,12 +147,21 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam)
 	TCHAR szTextWin[255];
 	if (GetWindowText(hwnd, (LPWSTR)szTextWin, sizeof(szTextWin)))
 	{
-		if (wcscmp(szTextWin, TEXT("HelloWindow")) == 0)
+		if (wcscmp(szTextWin, TEXT("HelloWindow")) == 0 && hwnd != hWnd)
 		{
 			/*std::cout << "hwnd: " << hwnd << "\n" << "name: ";
 			_tprintf(szTextWin);
 			std::cout << "\n";*/
-			SendMessage(hwnd, WM_UPDATE_MESSAGE, countStep, NULL);
+			if (lParam == 0)
+			{
+				SendMessage(hwnd, WM_UPDATE_MESSAGE, countStep, 0);
+				std::cout << "Закинул countStep и обнову\n";
+			}	
+			if (lParam == 1)
+			{
+				SendMessage(hwnd, WM_GET_COUNT, 0, 0);
+				std::cout << "Запросил countStep\n";
+			}
 		}
 	}
 	return TRUE;
@@ -236,8 +247,8 @@ LRESULT CALLBACK WndProc(
 	GetClientRect(hWnd, lprect);
 	InvalidateRect(hWnd, 0, 0);
 	HBRUSH ElipseBr;
-	int a = (lprect->right - lprect->left) / cfg.n;
-	int b = (lprect->bottom - lprect->top) / cfg.n;
+	double a = (lprect->right - lprect->left) / (double)cfg.n;
+	double b = (lprect->bottom - lprect->top) / (double)cfg.n;
 	int x, y;
 	HBRUSH col = NULL;
 
@@ -245,6 +256,8 @@ LRESULT CALLBACK WndProc(
 		countStep = wParam;
 		InvalidateRect(hWnd, lprect, 1);
 	}
+	if (message == WM_GET_COUNT)
+		EnumWindows(&EnumWindowsProc, 0);
 	else
 	{
 		switch (message)
@@ -479,7 +492,7 @@ int main(int argc, char* argv[])
 		printf("%d\n", GetLastError());
 	}
 
-	HWND hWnd = CreateWindow(
+	hWnd = CreateWindow(
 		szClsName,
 		_T("HelloWindow"),
 		WS_OVERLAPPEDWINDOW,
@@ -526,13 +539,7 @@ int main(int argc, char* argv[])
 		return 1;
 	}
 
-	if (GetLastError() != ERROR_ALREADY_EXISTS) {
-		printf("Hello i`m creator\n");
-	}
-
-	if (GetLastError() == ERROR_ALREADY_EXISTS) {
-		printf("Hello i`m listener\n");
-	}
+	
 
 	array = new int* [cfg.n];
 	for (int i = 0; i < cfg.n; i++)
@@ -540,10 +547,18 @@ int main(int argc, char* argv[])
 		array[i] = pBuf + cfg.n * i;
 	}
 
-	CopyMemory((PVOID)pBuf, array, sizeof(array) * cfg.n * cfg.n);
+	if (GetLastError() != ERROR_ALREADY_EXISTS) {
+		printf("Hello i`m creator\n");
+		CopyMemory((PVOID)pBuf, array, sizeof(array) * cfg.n * cfg.n);
+		
+	}
 
+	if (GetLastError() == ERROR_ALREADY_EXISTS) {
+		printf("Hello i`m listener\n");
+		EnumWindows(&EnumWindowsProc, 1);
+	}
 
-	std::cout << hWnd << "\n";
+	//std::cout << hWnd << "\n";
 	//////////////////////////////////////////////////////////////////////////////////////////////
 
 	BOOL bOk;
