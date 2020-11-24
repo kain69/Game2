@@ -12,8 +12,22 @@
 #define WM_KEYUP        0x0101
 #define KEY_SHIFTED     0x8000
 #define KEY_TOGGLED     0x0001
+#define STACK_SIZE		(64*1024)
 
 const TCHAR* szClsName = _T("HelloWindowClass");
+
+HANDLE procsem;
+HANDLE stepevent;
+HANDLE stepmutex;
+HANDLE gameoverMutex;
+HANDLE animevent;
+CRITICAL_SECTION gameoverCrit;
+
+RECT		rect;
+LPRECT		lprect = new tagRECT;
+HPEN		hPen;
+PAINTSTRUCT ps;
+HDC			hdc;
 //----------------------------------------------------------------------------------------
 struct rgb {
 	double r, g, b;
@@ -23,8 +37,10 @@ struct Config {
 	int		n			= 3;
 	int		width		= 320;
 	int		height		= 240;
-	rgb		color_line	= { 255,	0,	0 };
+	rgb		color_line	= { 255,	0,	0   };
 	rgb		color_field = { 0,		0,	255 };
+	rgb     cross		= { 255,  255,  255 };
+	rgb     zero		= { 100,  100,  100 };
 
 }cfg;
 
@@ -32,6 +48,8 @@ UINT WM_UPDATE_MESSAGE = RegisterWindowMessage(0);
 UINT WM_GET_COUNT = RegisterWindowMessage(L"Please");
 int** array;
 int countStep = 0;
+bool flagAnim = true;
+HBRUSH col = NULL;
 HWND hWnd;
 std::string scfg = "P:\\Влад\\ВУЗ\\2 курс\\ОС\\Game2\\config.cfg";
 //----------------------------------------------------------------------------------------
@@ -83,6 +101,21 @@ void rgbChanger2(rgb& color, double delta)
 		color.r = 0;
 }
 
+DWORD WINAPI AnimSpin(LPVOID p) {
+	while (true) {
+		rgbChanger2(cfg.color_line, 5);
+		rgbChanger2(cfg.color_field, 5);
+		rgbChanger2(cfg.cross, 17);
+		rgbChanger2(cfg.zero, 17);
+
+		col = (HBRUSH)SetClassLongPtr(hWnd, GCLP_HBRBACKGROUND, (LONG_PTR)CreateSolidBrush(RGB(cfg.color_field.r, cfg.color_field.g, cfg.color_field.b)));
+		DeleteObject(col);
+
+		InvalidateRect(hWnd, lprect, 1);
+		Sleep(50);
+	}
+}
+
 void RunNotepad(void)
 {
 	STARTUPINFO sInfo;
@@ -104,6 +137,8 @@ void saveConfig(Config cfg)
 	fout << "height = "			<< cfg.height			<< "\n";
 	fout << "color_line = "		<< cfg.color_line.r		<< " "	<< cfg.color_line.g		<< " "	<< cfg.color_line.b		<< "\n";
 	fout << "color_field = "	<< cfg.color_field.r	<< " "	<< cfg.color_field.g	<< " "	<< cfg.color_field.b	<< "\n";
+	fout << "cross = "	<< cfg.cross.r	<< " "	<< cfg.cross.g	<< " "	<< cfg.cross.b	<< "\n";
+	fout << "zero = "	<< cfg.zero.r	<< " "	<< cfg.zero.g	<< " "	<< cfg.zero.b	<< "\n";
 	fout.close();
 }
 
@@ -121,6 +156,18 @@ void loadConfig(Config& cfg)
 				sin >> cfg.width;
 			else if (line.find("height") != -1)
 				sin >> cfg.height;
+			else if (line.find("cross") != -1)
+			{
+				sin >> cfg.cross.r;
+				sin >> cfg.cross.g;
+				sin >> cfg.cross.b;
+			}
+			else if (line.find("zero") != -1)
+			{
+				sin >> cfg.zero.r;
+				sin >> cfg.zero.g;
+				sin >> cfg.zero.b;
+			}
 			else if (line.find("color_line") != -1) 
 			{
 				sin >> cfg.color_line.r;
@@ -183,12 +230,12 @@ bool checkLane(int** array, int symb)
 {
 	bool cols = true;
 	bool rows = true;
-	for (int col = 0; col < cfg.n; col++) {
+	for (int column = 0; column < cfg.n; column++) {
 		cols = true;
 		rows = true;
 		for (int row = 0; row < cfg.n; row++) {
-			cols &= (array[col][row] == symb);
-			rows &= (array[row][col] == symb);
+			cols &= (array[column][row] == symb);
+			rows &= (array[row][column] == symb);
 		}
 
 		// Это условие после каждой проверки колонки и столбца
@@ -203,38 +250,42 @@ void checkEnd(int** array)
 {
 	if(checkDiagonal(array, 1) || checkLane(array, 1))
 	{
-		for (int i = 0; i < cfg.n; i++)
-			for (int j = 0; j < cfg.n; j++)
-				array[i][j] = 0;
-		countStep = 0;
-		EnumWindows(&EnumWindowsProc, 0);
-		std::cout << "Game Over, Выиграл нолик\n";
+		if (WaitForSingleObject(gameoverMutex, 0) == WAIT_TIMEOUT) {
+			PostQuitMessage(0);
+			return;
+		}
+
+		MessageBox(NULL, _T("Game Over! Win Нолик"), _T("TickTackToe"),
+			MB_OK | MB_SETFOREGROUND);
+
+		PostQuitMessage(0);
 	}
 	if (checkDiagonal(array, 2) || checkLane(array, 2))
 	{
-		for (int i = 0; i < cfg.n; i++)
-			for (int j = 0; j < cfg.n; j++)
-				array[i][j] = 0;
-		countStep = 0;
-		EnumWindows(&EnumWindowsProc, 0);
-		std::cout << "Game Over, Выиграл крестик\n";
+		if (WaitForSingleObject(gameoverMutex, 0) == WAIT_TIMEOUT) {
+			PostQuitMessage(0);
+			return;
+		}
+
+		MessageBox(NULL, _T("Game Over! Win Крестик"), _T("TickTackToe"),
+			MB_OK | MB_SETFOREGROUND);
+		
+		PostQuitMessage(0);
 	}
 	if (countStep >= 9)
 	{
-		for (int i = 0; i < cfg.n; i++)
-			for (int j = 0; j < cfg.n; j++)
-				array[i][j] = 0;
-		countStep = 0;
-		EnumWindows(&EnumWindowsProc, 0);
-		std::cout << "Game Over, Ничья\n";
+		if (WaitForSingleObject(gameoverMutex, 0) == WAIT_TIMEOUT) {
+			PostQuitMessage(0);
+			return;
+		}
+
+		MessageBox(NULL, _T("Game Over! Ничья"), _T("TickTackToe"),
+			MB_OK | MB_SETFOREGROUND);
+
+		PostQuitMessage(0);
 	}
 }
 //----------------------------------------------------------------------------------------
-RECT		rect;
-LPRECT		lprect	= new tagRECT;
-HPEN		hPen;
-PAINTSTRUCT ps;
-HDC			hdc;
 
 LRESULT CALLBACK WndProc(
 	HWND	hWnd,
@@ -250,11 +301,18 @@ LRESULT CALLBACK WndProc(
 	double a = (lprect->right - lprect->left) / (double)cfg.n;
 	double b = (lprect->bottom - lprect->top) / (double)cfg.n;
 	int x, y;
-	HBRUSH col = NULL;
+	
 
 	if (message == WM_UPDATE_MESSAGE) {
 		countStep = wParam;
+
+		if (WaitForSingleObject(stepevent, 0) == WAIT_TIMEOUT)
+			SetEvent(stepevent);
+		else
+			ResetEvent(stepevent);
+
 		InvalidateRect(hWnd, lprect, 1);
+		checkEnd(array);
 	}
 	if (message == WM_GET_COUNT)
 		EnumWindows(&EnumWindowsProc, 0);
@@ -292,6 +350,15 @@ LRESULT CALLBACK WndProc(
 		}*/
 		case WM_LBUTTONUP:
 		{
+			if(countStep % 2 == 0){
+				if(WaitForSingleObject(stepevent, 0) == WAIT_TIMEOUT)
+					return 0;
+			}
+			else
+				if (WaitForSingleObject(stepevent, 0) == WAIT_TIMEOUT) {
+					return 0;
+				}
+
 			x = GET_X_LPARAM(lParam); y = GET_Y_LPARAM(lParam);
 			for (int i = 0; i < cfg.n; i++)
 			{
@@ -316,9 +383,16 @@ LRESULT CALLBACK WndProc(
 					}
 				}
 			}
-			EnumWindows(&EnumWindowsProc, 0);
 			InvalidateRect(hWnd, lprect, 1);
+
+			if (WaitForSingleObject(stepevent, 0) == WAIT_TIMEOUT)
+				SetEvent(stepevent);
+			else
+				ResetEvent(stepevent);
+
 			checkEnd(array);
+			EnumWindows(&EnumWindowsProc, 0);
+			
 			return 0;
 		}
 		case WM_PAINT:
@@ -331,7 +405,7 @@ LRESULT CALLBACK WndProc(
 					if (array[i][j] == 1)
 					{
 						HDC hdc = GetDC(hWnd);
-						HBRUSH hBrush = CreateSolidBrush(RGB(100, 100, 100));
+						HBRUSH hBrush = CreateSolidBrush(RGB(cfg.zero.r, cfg.zero.g, cfg.zero.b));
 						SelectObject(hdc, hBrush);
 						int xl = a * i;
 						int xr = xl + a;
@@ -344,7 +418,7 @@ LRESULT CALLBACK WndProc(
 					if (array[i][j] == 2)
 					{
 						HDC hdc = GetDC(hWnd);
-						hPen = CreatePen(PS_SOLID, 4, RGB(255, 255, 255));
+						hPen = CreatePen(PS_SOLID, 4, RGB(cfg.cross.r, cfg.cross.g, cfg.cross.b));
 						SelectObject(hdc, hPen);
 						int xl = a * i;
 						int xr = xl + a;
@@ -395,7 +469,7 @@ LRESULT CALLBACK WndProc(
 			PostQuitMessage(0);
 			return 0;
 
-		case WM_MOUSEWHEEL:
+		/*case WM_MOUSEWHEEL:
 
 			if (GET_WHEEL_DELTA_WPARAM(wParam) > 0)
 				rgbChanger2(cfg.color_line, 5);
@@ -403,19 +477,29 @@ LRESULT CALLBACK WndProc(
 				rgbChanger2(cfg.color_line, -5);
 
 			InvalidateRect(hWnd, 0, true);
-			return 0;
+			return 0;*/
 
 		case WM_KEYDOWN:
 
 			printf("%d\n", wParam);
 			if (wParam == VK_RETURN) {				//Enter
-				cfg.color_field.r = rand() % 256;
-				cfg.color_field.g = rand() % 256;
-				cfg.color_field.b = rand() % 256;
-				col = (HBRUSH)SetClassLongPtr(hWnd, GCLP_HBRBACKGROUND, (LONG_PTR)CreateSolidBrush(RGB(cfg.color_field.r, cfg.color_field.g, cfg.color_field.b)));
-				InvalidateRect(hWnd, 0, true);
-				DeleteObject(col);
+				if(WaitForSingleObject(animevent, 0) == WAIT_TIMEOUT){
+					SuspendThread(AnimSpin);
+					SetEvent(animevent);
+					std::cout << "ПАУЗА ЕПТА! \n";
+					return 0;
+				}
+				std::cout << "СТАРТ ЕПТА! \n";
+				ResumeThread(AnimSpin);
+				ResetEvent(animevent);
 			}
+			//	cfg.color_field.r = rand() % 256;
+			//	cfg.color_field.g = rand() % 256;
+			//	cfg.color_field.b = rand() % 256;
+			//	col = (HBRUSH)SetClassLongPtr(hWnd, GCLP_HBRBACKGROUND, (LONG_PTR)CreateSolidBrush(RGB(cfg.color_field.r, cfg.color_field.g, cfg.color_field.b)));
+			//	InvalidateRect(hWnd, 0, true);
+			//	DeleteObject(col);
+			//}
 
 			if (wParam == VK_ESCAPE)				//Esc
 			{
@@ -444,6 +528,8 @@ LRESULT CALLBACK WndProc(
 				cfg.height = 240;
 				cfg.color_line = { 255, 0, 0 };
 				cfg.color_field = { 0, 0, 255 };
+				cfg.cross = {0, 255, 0};
+				cfg.zero = {0, 255, 255};
 				col = (HBRUSH)SetClassLongPtr(hWnd, GCLP_HBRBACKGROUND, (LONG_PTR)CreateSolidBrush(RGB(cfg.color_field.r, cfg.color_field.g, cfg.color_field.b)));
 				DeleteObject(col);
 				GetWindowRect(hWnd, lprect);
@@ -472,6 +558,72 @@ int main(int argc, char* argv[])
 	setlocale(LC_ALL, "ru");
 	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_GREEN | FOREGROUND_INTENSITY);
 	//FreeConsole();
+
+	//////////////////////////////////////////////////////////////////////////////////////////////
+
+	procsem = CreateSemaphore(NULL, 2, 2, L"Global\MySemaphore");
+
+	if (procsem == NULL)
+	{
+		procsem == OpenSemaphore(
+			SEMAPHORE_ALL_ACCESS,
+			FALSE,
+			L"Global\MySemaphore");
+	}
+
+	if (WaitForSingleObject(procsem, 0) == WAIT_TIMEOUT) {
+		CloseHandle(procsem);
+		PostQuitMessage(0);
+	}
+
+	gameoverMutex = CreateMutexW(NULL, NULL, L"Global\MyMutex");
+
+	if(gameoverMutex == NULL)
+	{
+		gameoverMutex == OpenMutex(
+			MUTEX_ALL_ACCESS,
+			FALSE,
+			L"Global\MyMutex");
+	}
+
+	InitializeCriticalSection(&gameoverCrit);
+
+	stepevent = CreateEvent(
+		NULL,
+		TRUE,
+		TRUE,
+		NULL);
+
+	animevent = CreateEvent(
+		NULL,
+		TRUE,
+		FALSE,
+		L"Global\MyEvent");
+
+	if (animevent == NULL)
+	{
+		animevent == OpenEvent(
+			EVENT_ALL_ACCESS,
+			FALSE,
+			L"Global\MyEvent");
+	}
+
+	CreateThread(NULL, STACK_SIZE, AnimSpin, NULL, 0, NULL);
+
+	/*stepmutex = CreateMutexW(
+		NULL,
+		NULL,
+		L"Global\MyStepMutex");
+
+	if (stepmutex == NULL)
+	{
+		stepmutex == OpenMutex(
+			MUTEX_ALL_ACCESS,
+			FALSE,
+			L"Global\MyStepMutex");
+	}*/
+
+	//////////////////////////////////////////////////////////////////////////////////////////////
 
 	srand(time(NULL));
 	loadConfig(cfg);
@@ -549,8 +701,7 @@ int main(int argc, char* argv[])
 
 	if (GetLastError() != ERROR_ALREADY_EXISTS) {
 		printf("Hello i`m creator\n");
-		CopyMemory((PVOID)pBuf, array, sizeof(array) * cfg.n * cfg.n);
-		
+		//CopyMemory((PVOID)pBuf, array, sizeof(array) * cfg.n * cfg.n);
 	}
 
 	if (GetLastError() == ERROR_ALREADY_EXISTS) {
@@ -571,10 +722,12 @@ int main(int argc, char* argv[])
 			printf("%d\n", GetLastError());
 			break;
 		}
-
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
 	}
+
+
+	ReleaseSemaphore(procsem, 1, NULL);
 
 	UnmapViewOfFile(pBuf);
 	CloseHandle(hMapFile);
