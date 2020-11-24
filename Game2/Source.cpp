@@ -16,11 +16,14 @@
 
 const TCHAR* szClsName = _T("HelloWindowClass");
 
+
 HANDLE procsem;
 HANDLE stepevent;
 HANDLE stepmutex;
 HANDLE gameoverMutex;
-HANDLE animevent;
+HANDLE AnimSpinHNDL;
+int priority;
+
 CRITICAL_SECTION gameoverCrit;
 
 RECT		rect;
@@ -28,6 +31,9 @@ LPRECT		lprect = new tagRECT;
 HPEN		hPen;
 PAINTSTRUCT ps;
 HDC			hdc;
+
+
+
 //----------------------------------------------------------------------------------------
 struct rgb {
 	double r, g, b;
@@ -43,6 +49,11 @@ struct Config {
 	rgb     zero		= { 100,  100,  100 };
 
 }cfg;
+
+HBRUSH ElipseBr;
+double a;
+double b;
+int x, y;
 
 UINT WM_UPDATE_MESSAGE = RegisterWindowMessage(0);
 UINT WM_GET_COUNT = RegisterWindowMessage(L"Please");
@@ -103,17 +114,86 @@ void rgbChanger2(rgb& color, double delta)
 
 DWORD WINAPI AnimSpin(LPVOID p) {
 	while (true) {
-		rgbChanger2(cfg.color_line, 5);
-		rgbChanger2(cfg.color_field, 5);
-		rgbChanger2(cfg.cross, 17);
-		rgbChanger2(cfg.zero, 17);
+		if (flagAnim) {
+			rgbChanger2(cfg.color_line, 5);
+			rgbChanger2(cfg.color_field, 5);
+			rgbChanger2(cfg.cross, 17);
+			rgbChanger2(cfg.zero, 17);
 
-		col = (HBRUSH)SetClassLongPtr(hWnd, GCLP_HBRBACKGROUND, (LONG_PTR)CreateSolidBrush(RGB(cfg.color_field.r, cfg.color_field.g, cfg.color_field.b)));
-		DeleteObject(col);
+			SetClassLongPtr(hWnd, GCLP_HBRBACKGROUND, (LONG_PTR)CreateSolidBrush(RGB(cfg.color_field.r, cfg.color_field.g, cfg.color_field.b)));
+			DeleteObject(col);
+		}
+			InvalidateRect(hWnd, 0, 1);
 
-		InvalidateRect(hWnd, lprect, 1);
-		Sleep(50);
+			///////////////////////////
+#pragma region MyPaint
+			hdc = BeginPaint(hWnd, &ps);
+			for (int i = 0; i < cfg.n; i++)
+			{
+				for (int j = 0; j < cfg.n; j++)
+				{
+
+					if (array[i][j] == 1)
+					{
+						HDC hdc = GetDC(hWnd);
+						HBRUSH hBrush = CreateSolidBrush(RGB(cfg.zero.r, cfg.zero.g, cfg.zero.b));
+						SelectObject(hdc, hBrush);
+						int xl = a * i;
+						int xr = xl + a;
+						int yt = b * j;
+						int yb = yt + b;
+						Ellipse(hdc, xl + a / 20 + 3, yt + a / 20, xr - a / 20 - 3, yb - a / 20);
+						DeleteObject(hBrush);
+						DeleteObject(hdc);
+					}
+					if (array[i][j] == 2)
+					{
+						HDC hdc = GetDC(hWnd);
+						hPen = CreatePen(PS_SOLID, 4, RGB(cfg.cross.r, cfg.cross.g, cfg.cross.b));
+						SelectObject(hdc, hPen);
+						int xl = a * i;
+						int xr = xl + a;
+						int yt = b * j;
+						int yb = yt + b;
+
+						MoveToEx(hdc, xl + a - a / 10, yb - a / 10, 0);
+						LineTo(hdc, xr - a + a / 10, yt + a / 10);
+
+						MoveToEx(hdc, xl + a / 10, yb - a / 10, 0);
+						LineTo(hdc, xr - a / 10, yt + a / 10);
+
+						DeleteObject(hPen);
+						DeleteObject(hdc);
+					}
+
+				}
+			}
+			//GetClientRect(hWnd, lprect);
+			hPen = CreatePen(PS_SOLID, 5, RGB(cfg.color_line.r, cfg.color_line.g, cfg.color_line.b));
+			SelectObject(hdc, hPen);
+
+			for (int i = 0; i <= cfg.n; i++)
+			{
+				MoveToEx(hdc, lprect->left + a * i, lprect->top, 0);
+				LineTo(hdc, lprect->left + a * i, lprect->bottom);
+
+			}
+			for (int i = 1; i <= cfg.n; i++)
+			{
+
+				MoveToEx(hdc, lprect->left, lprect->top + b * i, 0);
+				LineTo(hdc, lprect->right, lprect->top + b * i);
+
+			}
+
+			DeleteObject(hPen);
+			DeleteObject(hdc);
+			EndPaint(hWnd, &ps);
+#pragma endregion	
+			///////////////////////////
+			Sleep(50);
 	}
+	return 0;
 }
 
 void RunNotepad(void)
@@ -296,12 +376,9 @@ LRESULT CALLBACK WndProc(
 {
 	
 	GetClientRect(hWnd, lprect);
-	InvalidateRect(hWnd, 0, 0);
-	HBRUSH ElipseBr;
-	double a = (lprect->right - lprect->left) / (double)cfg.n;
-	double b = (lprect->bottom - lprect->top) / (double)cfg.n;
-	int x, y;
-	
+	//InvalidateRect(hWnd, 0, 0);
+	a = (lprect->right - lprect->left) / (double)cfg.n;
+	b = (lprect->bottom - lprect->top) / (double)cfg.n;
 
 	if (message == WM_UPDATE_MESSAGE) {
 		countStep = wParam;
@@ -311,7 +388,7 @@ LRESULT CALLBACK WndProc(
 		else
 			ResetEvent(stepevent);
 
-		InvalidateRect(hWnd, lprect, 1);
+		//InvalidateRect(hWnd, lprect, 1);
 		checkEnd(array);
 	}
 	if (message == WM_GET_COUNT)
@@ -383,7 +460,7 @@ LRESULT CALLBACK WndProc(
 					}
 				}
 			}
-			InvalidateRect(hWnd, lprect, 1);
+			//InvalidateRect(hWnd, lprect, 1);
 
 			if (WaitForSingleObject(stepevent, 0) == WAIT_TIMEOUT)
 				SetEvent(stepevent);
@@ -395,7 +472,7 @@ LRESULT CALLBACK WndProc(
 			
 			return 0;
 		}
-		case WM_PAINT:
+		/*case WM_PAINT:
 			hdc = BeginPaint(hWnd, &ps);
 			for (int i = 0; i < cfg.n; i++)
 			{
@@ -458,7 +535,7 @@ LRESULT CALLBACK WndProc(
 			DeleteObject(hPen);
 			DeleteObject(hdc);
 			EndPaint(hWnd, &ps);
-			return 0;
+			return 0;*/
 
 		case WM_DESTROY:
 			GetWindowRect(hWnd, lprect);
@@ -480,18 +557,45 @@ LRESULT CALLBACK WndProc(
 			return 0;*/
 
 		case WM_KEYDOWN:
+			//printf("%d\n", wParam);
 
-			printf("%d\n", wParam);
+			if (wParam == 0x31) {					//1
+				std::cout << "Было:  " << GetThreadPriority(AnimSpinHNDL) << "\n";
+				SetThreadPriority(AnimSpinHNDL, THREAD_PRIORITY_IDLE);
+				//std::cout << GetLastError() << "\n";
+				priority = GetThreadPriority(AnimSpinHNDL);
+				std::cout << "Стало: " << priority << "\n";
+				std::wstring c = L"Приоритет теперь: " + std::to_wstring(priority);
+				MessageBox(NULL, c.c_str(), _T("TickTackToe"),
+					MB_OK | MB_SETFOREGROUND);
+
+			}
+
+			if (wParam == 0x32) {					//2
+				std::cout << "Было:  " << GetThreadPriority(AnimSpinHNDL) << "\n";
+				SetThreadPriority(AnimSpinHNDL, THREAD_PRIORITY_TIME_CRITICAL);
+				//std::cout << GetLastError() << "\n";
+				priority = GetThreadPriority(AnimSpinHNDL);
+				std::cout << "Стало: " << priority << "\n";
+				std::wstring c = L"Приоритет теперь: " + std::to_wstring(priority);
+				MessageBox(NULL, c.c_str(), _T("TickTackToe"),
+					MB_OK | MB_SETFOREGROUND);
+			}
+
+			if (wParam == 0x33) {					//3
+				std::cout << "Было:  " << GetThreadPriority(AnimSpinHNDL) << "\n";
+				SetThreadPriority(AnimSpinHNDL, THREAD_PRIORITY_NORMAL);
+				//std::cout << GetLastError() << "\n";
+				priority = GetThreadPriority(AnimSpinHNDL);
+				std::cout << "Стало: " << priority << "\n";
+				std::wstring c = L"Приоритет теперь: " + std::to_wstring(priority);	
+				MessageBox(NULL, c.c_str(), _T("TickTackToe"),
+					MB_OK | MB_SETFOREGROUND);
+			}
+			
 			if (wParam == VK_RETURN) {				//Enter
-				if(WaitForSingleObject(animevent, 0) == WAIT_TIMEOUT){
-					SuspendThread(AnimSpin);
-					SetEvent(animevent);
-					std::cout << "ПАУЗА ЕПТА! \n";
-					return 0;
-				}
-				std::cout << "СТАРТ ЕПТА! \n";
-				ResumeThread(AnimSpin);
-				ResetEvent(animevent);
+				flagAnim = !flagAnim;				// Тут две разные реализации, если оставить только эту строчку, то анимация остановится, а отрисовка нет
+				//SuspendThread(AnimSpinHNDL);		// Если оставить обе строчке и добавить переключатель флага, то отрисовка полностью остан-ся и вкл-ся.
 			}
 			//	cfg.color_field.r = rand() % 256;
 			//	cfg.color_field.g = rand() % 256;
@@ -537,7 +641,7 @@ LRESULT CALLBACK WndProc(
 				for (int i = 0; i < cfg.n; i++)
 					for (int j = 0; j < cfg.n; j++)
 						array[i][j] = 0;
-				InvalidateRect(hWnd, 0, true);
+				//InvalidateRect(hWnd, 0, true);
 
 				return 0;
 			}
@@ -557,7 +661,7 @@ int main(int argc, char* argv[])
 	SetConsoleOutputCP(1251);
 	setlocale(LC_ALL, "ru");
 	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-	//FreeConsole();
+	FreeConsole();
 
 	//////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -593,36 +697,6 @@ int main(int argc, char* argv[])
 		TRUE,
 		TRUE,
 		NULL);
-
-	animevent = CreateEvent(
-		NULL,
-		TRUE,
-		FALSE,
-		L"Global\MyEvent");
-
-	if (animevent == NULL)
-	{
-		animevent == OpenEvent(
-			EVENT_ALL_ACCESS,
-			FALSE,
-			L"Global\MyEvent");
-	}
-
-	CreateThread(NULL, STACK_SIZE, AnimSpin, NULL, 0, NULL);
-
-	/*stepmutex = CreateMutexW(
-		NULL,
-		NULL,
-		L"Global\MyStepMutex");
-
-	if (stepmutex == NULL)
-	{
-		stepmutex == OpenMutex(
-			MUTEX_ALL_ACCESS,
-			FALSE,
-			L"Global\MyStepMutex");
-	}*/
-
 	//////////////////////////////////////////////////////////////////////////////////////////////
 
 	srand(time(NULL));
@@ -710,6 +784,10 @@ int main(int argc, char* argv[])
 	}
 
 	//std::cout << hWnd << "\n";
+	//////////////////////////////////////////////////////////////////////////////////////////////
+
+	AnimSpinHNDL = CreateThread(NULL, STACK_SIZE, AnimSpin, NULL, 0, NULL);
+
 	//////////////////////////////////////////////////////////////////////////////////////////////
 
 	BOOL bOk;
