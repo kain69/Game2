@@ -187,7 +187,7 @@ DWORD WINAPI AnimSpin(LPVOID p) {
 			EndPaint(hWnd, &ps);
 #pragma endregion	
 			///////////////////////////
-			Sleep(50);
+			Sleep(100);
 	}
 	return 0;
 }
