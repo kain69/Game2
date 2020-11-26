@@ -19,12 +19,10 @@ const TCHAR* szClsName = _T("HelloWindowClass");
 
 HANDLE procsem;
 HANDLE stepevent;
-HANDLE stepmutex;
+HANDLE stepMainEvent;
 HANDLE gameoverMutex;
 HANDLE AnimSpinHNDL;
 int priority;
-
-CRITICAL_SECTION gameoverCrit;
 
 RECT		rect;
 LPRECT		lprect = new tagRECT;
@@ -62,7 +60,7 @@ int countStep = 0;
 bool flagAnim = true;
 HBRUSH col = NULL;
 HWND hWnd;
-std::string scfg = "P:\\Влад\\ВУЗ\\2 курс\\ОС\\Game2\\config.cfg";
+std::string scfg = "P:\\Vlad\\ВУЗ\\2 курс\\ОС\\Game2\\config.cfg";
 //----------------------------------------------------------------------------------------
 void rgbChanger2(rgb& color, double delta)
 {
@@ -191,7 +189,7 @@ DWORD WINAPI AnimSpin(LPVOID p) {
 			EndPaint(hWnd, &ps);
 #pragma endregion	
 			///////////////////////////
-			Sleep(50);
+			Sleep(100);
 	}
 	return 0;
 }
@@ -383,11 +381,6 @@ LRESULT CALLBACK WndProc(
 	if (message == WM_UPDATE_MESSAGE) {
 		countStep = wParam;
 
-		if (WaitForSingleObject(stepevent, 0) == WAIT_TIMEOUT)
-			SetEvent(stepevent);
-		else
-			ResetEvent(stepevent);
-
 		//InvalidateRect(hWnd, lprect, 1);
 		checkEnd(array);
 	}
@@ -397,44 +390,11 @@ LRESULT CALLBACK WndProc(
 	{
 		switch (message)
 		{
-
-		/*case WM_RBUTTONUP:
-		{
-			x = GET_X_LPARAM(lParam); y = GET_Y_LPARAM(lParam);
-			for (int i = 0; i < cfg.n; i++)
-			{
-				for (int j = 0; j < cfg.n; j++)
-				{
-					int xl = a * i;
-					int xr = xl + a;
-					int yt = b * j;
-					int yb = yt + b;
-
-					if ((xl <= x && yt <= y) && (xr > x && yb > y))
-					{
-						if (array[i][j] != 1 && array[i][j] != 2)
-						{
-							array[i][j] = 2;
-						}
-						break;
-					}
-				}
-			}
-			
-			EnumWindows(&EnumWindowsProc, 0);
-			InvalidateRect(hWnd, lprect, 1);
-			return 0;
-		}*/
 		case WM_LBUTTONUP:
 		{
-			if(countStep % 2 == 0){
-				if(WaitForSingleObject(stepevent, 0) == WAIT_TIMEOUT)
-					return 0;
-			}
-			else
-				if (WaitForSingleObject(stepevent, 0) == WAIT_TIMEOUT) {
-					return 0;
-				}
+			if ((countStep % 2 == 0 && WaitForSingleObject(stepevent, 0) == WAIT_TIMEOUT) ||
+				(countStep % 2 == 1 && WaitForSingleObject(stepevent, 0) != WAIT_TIMEOUT))
+				return 0;
 
 			x = GET_X_LPARAM(lParam); y = GET_Y_LPARAM(lParam);
 			for (int i = 0; i < cfg.n; i++)
@@ -461,11 +421,6 @@ LRESULT CALLBACK WndProc(
 				}
 			}
 			//InvalidateRect(hWnd, lprect, 1);
-
-			if (WaitForSingleObject(stepevent, 0) == WAIT_TIMEOUT)
-				SetEvent(stepevent);
-			else
-				ResetEvent(stepevent);
 
 			checkEnd(array);
 			EnumWindows(&EnumWindowsProc, 0);
@@ -541,8 +496,20 @@ LRESULT CALLBACK WndProc(
 			GetWindowRect(hWnd, lprect);
 			cfg.width = lprect->right - lprect->left;
 			cfg.height = lprect->bottom - lprect->top;
-			saveConfig(cfg);					// сохраняем конфиг
+			saveConfig(cfg);							// сохраняем конфиг
 
+			if (WaitForSingleObject(stepevent, 0) != WAIT_TIMEOUT)
+				SetEvent(stepMainEvent);
+			else
+				ResetEvent(stepMainEvent);
+
+
+			DeleteObject(stepevent);
+			DeleteObject(stepMainEvent);
+			ReleaseSemaphore(procsem, 1, NULL);
+			DeleteObject(procsem);
+			DeleteObject(gameoverMutex);
+			DeleteObject(AnimSpinHNDL);
 			PostQuitMessage(0);
 			return 0;
 
@@ -560,61 +527,49 @@ LRESULT CALLBACK WndProc(
 			//printf("%d\n", wParam);
 
 			if (wParam == 0x31) {					//1
-				std::cout << "Было:  " << GetThreadPriority(AnimSpinHNDL) << "\n";
 				SetThreadPriority(AnimSpinHNDL, THREAD_PRIORITY_IDLE);
 				//std::cout << GetLastError() << "\n";
-				priority = GetThreadPriority(AnimSpinHNDL);
-				std::cout << "Стало: " << priority << "\n";
-				std::wstring c = L"Приоритет теперь: " + std::to_wstring(priority);
+				std::wstring c = L"Приоритет теперь: " + std::to_wstring(GetThreadPriority(AnimSpinHNDL));
 				MessageBox(NULL, c.c_str(), _T("TickTackToe"),
 					MB_OK | MB_SETFOREGROUND);
 
 			}
 
 			if (wParam == 0x32) {					//2
-				std::cout << "Было:  " << GetThreadPriority(AnimSpinHNDL) << "\n";
 				SetThreadPriority(AnimSpinHNDL, THREAD_PRIORITY_TIME_CRITICAL);
 				//std::cout << GetLastError() << "\n";
-				priority = GetThreadPriority(AnimSpinHNDL);
-				std::cout << "Стало: " << priority << "\n";
-				std::wstring c = L"Приоритет теперь: " + std::to_wstring(priority);
+				std::wstring c = L"Приоритет теперь: " + std::to_wstring(GetThreadPriority(AnimSpinHNDL));
 				MessageBox(NULL, c.c_str(), _T("TickTackToe"),
 					MB_OK | MB_SETFOREGROUND);
 			}
 
 			if (wParam == 0x33) {					//3
-				std::cout << "Было:  " << GetThreadPriority(AnimSpinHNDL) << "\n";
 				SetThreadPriority(AnimSpinHNDL, THREAD_PRIORITY_NORMAL);
 				//std::cout << GetLastError() << "\n";
-				priority = GetThreadPriority(AnimSpinHNDL);
-				std::cout << "Стало: " << priority << "\n";
-				std::wstring c = L"Приоритет теперь: " + std::to_wstring(priority);	
+				std::wstring c = L"Приоритет теперь: " + std::to_wstring(GetThreadPriority(AnimSpinHNDL));
 				MessageBox(NULL, c.c_str(), _T("TickTackToe"),
 					MB_OK | MB_SETFOREGROUND);
 			}
 			
-			if (wParam == VK_RETURN) {				//Enter
-				flagAnim = !flagAnim;				// Тут две разные реализации, если оставить только эту строчку, то анимация остановится, а отрисовка нет
-				//SuspendThread(AnimSpinHNDL);		// Если оставить обе строчке и добавить переключатель флага, то отрисовка полностью остан-ся и вкл-ся.
+			if (wParam == VK_RETURN) {						// Enter
+				flagAnim = !flagAnim;						// Тут две разные реализации, если оставить только эту строчку, то анимация остановится, а отрисовка нет
+				if (!flagAnim) SuspendThread(AnimSpinHNDL);	//
+				else ResumeThread(AnimSpinHNDL);			// Если оставить обе строчке и добавить переключатель флага, то отрисовка полностью остан-ся и вкл-ся.
 			}
-			//	cfg.color_field.r = rand() % 256;
-			//	cfg.color_field.g = rand() % 256;
-			//	cfg.color_field.b = rand() % 256;
-			//	col = (HBRUSH)SetClassLongPtr(hWnd, GCLP_HBRBACKGROUND, (LONG_PTR)CreateSolidBrush(RGB(cfg.color_field.r, cfg.color_field.g, cfg.color_field.b)));
-			//	InvalidateRect(hWnd, 0, true);
-			//	DeleteObject(col);
-			//}
 
 			if (wParam == VK_ESCAPE)				//Esc
 			{
+				SuspendThread(AnimSpinHNDL);
 				PostQuitMessage(0);					//Завершаем работу
 				return 0;							//
 			}
 
 			if (wParam == 0x51)						// ctrl + q
 			{
-				if (GetKeyState(VK_CONTROL) < 0)	//
+				if (GetKeyState(VK_CONTROL) < 0) {
+					SuspendThread(AnimSpinHNDL);	//
 					PostQuitMessage(0);				//Завершаем работу
+				}
 				return 0;
 			}
 
@@ -690,13 +645,33 @@ int main(int argc, char* argv[])
 			L"Global\MyMutex");
 	}
 
-	InitializeCriticalSection(&gameoverCrit);
+	stepMainEvent = CreateEvent(
+		NULL,
+		TRUE,
+		TRUE,
+		L"Global\MyMainEvent");
 
+	if (stepMainEvent == NULL)
+	{
+		stepMainEvent == OpenEvent(
+			EVENT_ALL_ACCESS,
+			FALSE,
+			L"Global\MyMainEvent");
+	}
 	stepevent = CreateEvent(
 		NULL,
 		TRUE,
 		TRUE,
 		NULL);
+
+	if (WaitForSingleObject(stepMainEvent, 0) == WAIT_TIMEOUT)
+		ResetEvent(stepevent);
+		
+	if (WaitForSingleObject(stepMainEvent, 0) == WAIT_TIMEOUT)
+		SetEvent(stepMainEvent);
+	else
+		ResetEvent(stepMainEvent);
+
 	//////////////////////////////////////////////////////////////////////////////////////////////
 
 	srand(time(NULL));
@@ -804,13 +779,11 @@ int main(int argc, char* argv[])
 		DispatchMessage(&msg);
 	}
 
-
-	ReleaseSemaphore(procsem, 1, NULL);
-
 	UnmapViewOfFile(pBuf);
 	CloseHandle(hMapFile);
 
 	DestroyWindow(hWnd);
 	UnregisterClass(szClsName, hThis);
+
 	return 0;
 }
