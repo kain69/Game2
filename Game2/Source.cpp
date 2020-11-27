@@ -118,9 +118,9 @@ DWORD WINAPI AnimSpin(LPVOID p) {
 			rgbChanger2(cfg.cross, 17);
 			rgbChanger2(cfg.zero, 17);
 
-			SetClassLongPtr(hWnd, GCLP_HBRBACKGROUND, (LONG_PTR)CreateSolidBrush(RGB(cfg.color_field.r, cfg.color_field.g, cfg.color_field.b)));
+			col = (HBRUSH)SetClassLongPtr(hWnd, GCLP_HBRBACKGROUND, (LONG_PTR)CreateSolidBrush(RGB(cfg.color_field.r, cfg.color_field.g, cfg.color_field.b)));
+			DeleteObject(col);
 		}
-			//GetClientRect(hWnd, lprect);	
 			InvalidateRect(hWnd, 0, 1);
 			///////////////////////////
 #pragma region MyPaint
@@ -187,7 +187,7 @@ DWORD WINAPI AnimSpin(LPVOID p) {
 			EndPaint(hWnd, &ps);
 #pragma endregion	
 			///////////////////////////
-			Sleep(100);
+			Sleep(50);
 	}
 	return 0;
 }
@@ -348,7 +348,7 @@ void checkEnd(int** array)
 		
 		PostQuitMessage(0);
 	}
-	if (countStep >= 9)
+	if (countStep >= cfg.n*cfg.n)
 	{
 		if (WaitForSingleObject(gameoverMutex, 0) == WAIT_TIMEOUT) {
 			PostQuitMessage(0);
@@ -551,8 +551,8 @@ LRESULT CALLBACK WndProc(
 			
 			if (wParam == VK_RETURN) {						// Enter
 				flagAnim = !flagAnim;						// “ут две разные реализации, если оставить только эту строчку, то анимаци€ остановитс€, а отрисовка нет
-				if (!flagAnim) SuspendThread(AnimSpinHNDL);	//
-				else ResumeThread(AnimSpinHNDL);			// ≈сли оставить обе строчке и добавить переключатель флага, то отрисовка полностью остан-с€ и вкл-с€.
+				//if (!flagAnim) SuspendThread(AnimSpinHNDL);	//
+				//else ResumeThread(AnimSpinHNDL);			// ≈сли оставить обе строчке и добавить переключатель флага, то отрисовка полностью остан-с€ и вкл-с€.
 			}
 
 			if (wParam == VK_ESCAPE)				//Esc
@@ -635,7 +635,7 @@ int main(int argc, char* argv[])
 		PostQuitMessage(0);
 	}
 
-	gameoverMutex = CreateMutexW(NULL, NULL, L"Global\MyMutex");
+	gameoverMutex = CreateMutex(NULL, NULL, L"Global\MyMutex");
 
 	if(gameoverMutex == NULL)
 	{
